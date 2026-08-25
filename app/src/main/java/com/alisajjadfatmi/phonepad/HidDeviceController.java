@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothHidDeviceAppSdpSettings;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -17,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class HidDeviceController implements AutoCloseable {
+    private static final String TAG = "PhonePadHid";
     interface Listener {
         void onStatusChanged(String message);
 
@@ -237,6 +239,7 @@ final class HidDeviceController implements AutoCloseable {
     }
 
     private void notifyStatus(String message) {
+        Log.i(TAG, message);
         context.getMainExecutor().execute(() -> listener.onStatusChanged(message));
     }
 
@@ -274,6 +277,8 @@ final class HidDeviceController implements AutoCloseable {
     private final BluetoothHidDevice.Callback callback = new BluetoothHidDevice.Callback() {
         @Override
         public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean isRegistered) {
+            Log.i(TAG, "onAppStatusChanged registered=" + isRegistered
+                    + " pluggedDevice=" + (pluggedDevice == null ? "none" : safeName(pluggedDevice)));
             registered = isRegistered;
             if (pluggedDevice != null) {
                 activeHost = pluggedDevice;
@@ -286,6 +291,7 @@ final class HidDeviceController implements AutoCloseable {
 
         @Override
         public void onConnectionStateChanged(BluetoothDevice device, int state) {
+            Log.i(TAG, "onConnectionStateChanged host=" + safeName(device) + " state=" + state);
             activeHost = state == BluetoothProfile.STATE_DISCONNECTED ? null : device;
             connectionState = state;
             String stateText;
@@ -370,4 +376,3 @@ final class HidDeviceController implements AutoCloseable {
         }
     }
 }
-

@@ -8,8 +8,9 @@ The first APK validates the exact hardware path before the full touchpad is buil
 
 1. Grant Android's Nearby Devices permission.
 2. Register PhonePad as a composite Bluetooth keyboard and mouse.
-3. Connect to an already-paired computer.
-4. Test pointer movement, left click, and typing.
+3. For the first HID connection, make the phone discoverable and pair while PhonePad is registered.
+4. Refresh the paired-computer list and connect.
+5. Test pointer movement, left click, and typing.
 
 The Android HID Device API automatically unregisters an app that is not foreground. Keep PhonePad visible during this capability test.
 
@@ -26,4 +27,3 @@ The Android HID Device API automatically unregisters an app that is not foregrou
 ## Privacy
 
 PhonePad is offline-first and the Android app intentionally has no internet permission.
-

@@ -2,6 +2,7 @@ package com.alisajjadfatmi.phonepad;
 
 import android.Manifest;
 import android.app.Activity;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -25,6 +26,7 @@ import java.util.List;
 
 public final class MainActivity extends Activity implements HidDeviceController.Listener {
     private static final int REQUEST_BLUETOOTH = 1001;
+    private static final int REQUEST_DISCOVERABLE = 1002;
     private static final int BACKGROUND = Color.rgb(11, 16, 32);
     private static final int SURFACE = Color.rgb(21, 28, 49);
     private static final int PRIMARY = Color.rgb(112, 165, 255);
@@ -37,6 +39,8 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private Button permissionButton;
     private Button registerButton;
     private Button connectButton;
+    private Button discoverableButton;
+    private Button refreshButton;
     private Button moveButton;
     private Button clickButton;
     private Button typeButton;
@@ -111,12 +115,24 @@ public final class MainActivity extends Activity implements HidDeviceController.
 
         LinearLayout connectCard = card();
         connectCard.addView(sectionTitle("3 · Connect to the paired laptop"));
-        connectCard.addView(sectionBody("Choose ALISLAPTOP. The laptop and phone are already paired, so no scan is needed."));
+        connectCard.addView(sectionBody(
+                "For the first HID connection, pair while PhonePad is registered so Windows discovers the keyboard and mouse service."
+        ));
+        discoverableButton = secondaryButton("Make phone discoverable for fresh pairing");
+        discoverableButton.setOnClickListener(view -> makeDiscoverable());
+        connectCard.addView(discoverableButton, buttonParams());
         deviceSpinner = new Spinner(this);
         deviceSpinner.setBackgroundColor(Color.WHITE);
         LinearLayout.LayoutParams spinnerParams = matchWrap();
         spinnerParams.setMargins(0, dp(12), 0, dp(8));
         connectCard.addView(deviceSpinner, spinnerParams);
+        refreshButton = secondaryButton("Refresh paired computers");
+        refreshButton.setOnClickListener(view -> {
+            refreshBondedDevices();
+            refreshUi();
+            onStatusChanged("Refreshed the paired-device list.");
+        });
+        connectCard.addView(refreshButton, buttonParams());
         connectButton = actionButton("Connect as input device");
         connectButton.setOnClickListener(view -> connectSelectedDevice());
         connectCard.addView(connectButton, buttonParams());
@@ -159,12 +175,16 @@ public final class MainActivity extends Activity implements HidDeviceController.
 
     private boolean hasBluetoothPermission() {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+                || (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE) == PackageManager.PERMISSION_GRANTED);
     }
 
     private void requestBluetoothPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requestPermissions(new String[] {Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH);
+            requestPermissions(new String[] {
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_ADVERTISE
+            }, REQUEST_BLUETOOTH);
         } else {
             initializeBluetooth();
         }
@@ -176,7 +196,11 @@ public final class MainActivity extends Activity implements HidDeviceController.
         if (requestCode != REQUEST_BLUETOOTH) {
             return;
         }
-        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        boolean granted = grantResults.length == permissions.length;
+        for (int result : grantResults) {
+            granted = granted && result == PackageManager.PERMISSION_GRANTED;
+        }
+        if (granted) {
             onStatusChanged("Bluetooth access granted.");
             initializeBluetooth();
         } else {
@@ -229,6 +253,44 @@ public final class MainActivity extends Activity implements HidDeviceController.
         controller.connect(devices.get(position));
     }
 
+    private void makeDiscoverable() {
+        if (!controller.isRegistered()) {
+            onStatusChanged("Register PhonePad before starting fresh pairing.");
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestBluetoothPermission();
+            return;
+        }
+        Intent intent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+        intent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
+        try {
+            startActivityForResult(intent, REQUEST_DISCOVERABLE);
+        } catch (SecurityException exception) {
+            onStatusChanged("Android blocked discoverability. Allow Nearby Devices and try again.");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_DISCOVERABLE) {
+            return;
+        }
+        if (resultCode > 0) {
+            if (!controller.isRegistered()) {
+                controller.registerApp();
+            }
+            onStatusChanged("PhonePad is discoverable for " + resultCode
+                    + " seconds. Add it from Windows Bluetooth settings now.");
+        } else {
+            onStatusChanged("Discoverability was cancelled.");
+        }
+        refreshUi();
+    }
+
     @Override
     public void onStatusChanged(String message) {
         runOnUiThread(() -> statusText.setText(message));
@@ -252,6 +314,8 @@ public final class MainActivity extends Activity implements HidDeviceController.
         permissionButton.setText(permission ? "Bluetooth access granted" : "Allow Bluetooth access");
         registerButton.setEnabled(permission && proxy && !registered);
         registerButton.setText(registered ? "Keyboard + mouse registered" : "Register PhonePad");
+        discoverableButton.setEnabled(permission && registered);
+        refreshButton.setEnabled(permission);
         connectButton.setEnabled(registered && !devices.isEmpty() && !connected);
         connectButton.setText(connected
                 ? "Connected to " + controller.connectedHostName()
@@ -360,4 +424,3 @@ public final class MainActivity extends Activity implements HidDeviceController.
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }
-
