@@ -275,14 +275,14 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private LinearLayout buildPhoneKeyboardPanel() {
         LinearLayout panel = column();
         panel.addView(sectionBody(
-                "Tap the field to use Samsung Keyboard. Committed English and Hinglish text is sent directly to Windows."
+                "Use Samsung Keyboard like a physical Bluetooth keyboard. Windows owns the text and cursor; this box only captures the current word."
         ));
 
         phoneKeyboardInput = new PhoneKeyboardEditText(this);
         phoneKeyboardInput.setTextColor(Color.rgb(12, 20, 36));
         phoneKeyboardInput.setHintTextColor(Color.rgb(92, 103, 126));
         phoneKeyboardInput.setTextSize(18);
-        phoneKeyboardInput.setHint("Tap here and type with Samsung Keyboard…");
+        phoneKeyboardInput.setHint("Tap here — typing appears on Windows…");
         phoneKeyboardInput.setGravity(Gravity.TOP | Gravity.START);
         phoneKeyboardInput.setPadding(dp(16), dp(14), dp(16), dp(14));
         phoneKeyboardInput.setBackground(roundRect(Color.WHITE, 14, PRIMARY, 1));
@@ -294,13 +294,28 @@ public final class MainActivity extends Activity implements HidDeviceController.
         phoneKeyboardInput.setMinLines(3);
         phoneKeyboardInput.setPhoneKeyboardListener(new PhoneKeyboardEditText.Listener() {
             @Override
-            public void onCommittedText(CharSequence text) {
+            public void onTypedText(CharSequence text) {
                 controller.typeText(text);
             }
 
             @Override
             public void onBackspace(int count) {
                 controller.backspace(count);
+            }
+
+            @Override
+            public void onDelete(int count) {
+                controller.deleteForward(count);
+            }
+
+            @Override
+            public void onEnter() {
+                controller.keyTap(0, HidKeyMap.KEY_ENTER);
+            }
+
+            @Override
+            public void onTab() {
+                controller.keyTap(0, HidKeyMap.KEY_TAB);
             }
         });
         connectionRequiredViews.add(phoneKeyboardInput);
@@ -317,8 +332,8 @@ public final class MainActivity extends Activity implements HidDeviceController.
             manager.showSoftInput(phoneKeyboardInput, InputMethodManager.SHOW_IMPLICIT);
         });
         connectionRequiredViews.add(openKeyboard);
-        Button clear = secondaryButton("Clear phone field");
-        clear.setOnClickListener(view -> phoneKeyboardInput.clearLocalText());
+        Button clear = secondaryButton("Reset keyboard");
+        clear.setOnClickListener(view -> phoneKeyboardInput.resetKeyboardCapture());
         inputActions.addView(openKeyboard, weightedButtonParams());
         inputActions.addView(clear, weightedButtonParams());
         panel.addView(inputActions, rowParams());

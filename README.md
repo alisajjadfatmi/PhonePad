@@ -11,9 +11,9 @@ Pure Bluetooth HID has been validated on a Samsung Galaxy S24 Ultra running Andr
 - Double-tap and drag, vertical scrolling and horizontal scrolling
 - Dedicated left, right, middle, back and forward buttons
 - Adjustable pointer speed and standard/natural scrolling
-- Samsung Keyboard mode for English and Hinglish text
-- Samsung composing-text and autocorrect handling, including mirrored backspace corrections
-- Submission-safe phone typing: editor control characters are filtered and Enter is explicit
+- Samsung Keyboard bridge that emits ordinary HID key presses without mirroring the Windows document
+- Current-word composition and autocorrect handling without whole-document delete-and-retype behaviour
+- Physical-keyboard Enter semantics: newline in editors and submission in single-line fields
 - Full PC keyboard with Escape, F1–F12, navigation, arrows and sticky modifiers
 - Copy, paste, cut, undo, redo, select-all, app switching, close and search shortcuts
 - Volume, playback and brightness consumer controls

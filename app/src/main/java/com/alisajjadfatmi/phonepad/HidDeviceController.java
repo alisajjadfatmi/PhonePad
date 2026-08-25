@@ -257,6 +257,18 @@ final class HidDeviceController implements AutoCloseable {
         });
     }
 
+    void deleteForward(int count) {
+        int safeCount = Math.max(1, Math.min(100, count));
+        inputExecutor.execute(() -> {
+            for (int index = 0; index < safeCount; index++) {
+                sendKeyboard(0, HidKeyMap.KEY_DELETE);
+                sleep(35);
+                sendKeyboard(0, 0);
+                sleep(25);
+            }
+        });
+    }
+
     void consumerTap(int usage) {
         inputExecutor.execute(() -> {
             sendConsumer(usage);
