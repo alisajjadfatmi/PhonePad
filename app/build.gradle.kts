@@ -10,8 +10,8 @@ android {
         applicationId = "com.alisajjadfatmi.phonepad"
         minSdk = 28
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.3.0-alpha"
+        versionCode = 8
+        versionName = "0.4.0-alpha"
     }
 
     buildTypes {

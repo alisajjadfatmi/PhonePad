@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -29,6 +30,7 @@ import android.text.InputType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class MainActivity extends Activity implements HidDeviceController.Listener {
     private static final int REQUEST_BLUETOOTH = 1001;
@@ -38,6 +40,13 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private static final int PRIMARY = Color.rgb(112, 165, 255);
     private static final int TEXT = Color.rgb(245, 247, 255);
     private static final int MUTED = Color.rgb(182, 192, 216);
+    private static final String PREFERENCES = "phonepad_preferences";
+    private static final String PREF_MODE = "control_mode";
+    private static final String PREF_SENSITIVITY = "pointer_sensitivity";
+    private static final String PREF_NATURAL_SCROLL = "natural_scroll";
+    private static final String PREF_HAPTICS = "touchpad_haptics";
+    private static final String PREF_LEFT_HANDED = "left_handed_primary";
+    private static final String PREF_HOST_ADDRESS = "preferred_host_address";
 
     private HidDeviceController controller;
     private TextView statusText;
@@ -55,9 +64,11 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private LinearLayout touchpadPanel;
     private LinearLayout phoneKeyboardPanel;
     private LinearLayout pcKeyboardPanel;
+    private LinearLayout presenterPanel;
     private Button touchpadTab;
     private Button phoneKeyboardTab;
     private Button pcKeyboardTab;
+    private Button presenterTab;
     private TouchpadView touchpadView;
     private PhoneKeyboardEditText phoneKeyboardInput;
     private final List<View> connectionRequiredViews = new ArrayList<>();
@@ -66,11 +77,22 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private int selectedMode;
     private int sensitivityIndex = 1;
     private boolean naturalScroll;
+    private boolean hapticsEnabled = true;
+    private boolean leftHanded;
+    private String preferredHostAddress;
+    private SharedPreferences preferences;
     private final List<BluetoothDevice> devices = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE);
+        selectedMode = Math.max(0, Math.min(3, preferences.getInt(PREF_MODE, 0)));
+        sensitivityIndex = Math.max(0, Math.min(2, preferences.getInt(PREF_SENSITIVITY, 1)));
+        naturalScroll = preferences.getBoolean(PREF_NATURAL_SCROLL, false);
+        hapticsEnabled = preferences.getBoolean(PREF_HAPTICS, true);
+        leftHanded = preferences.getBoolean(PREF_LEFT_HANDED, false);
+        preferredHostAddress = preferences.getString(PREF_HOST_ADDRESS, null);
         getWindow().setStatusBarColor(BACKGROUND);
         getWindow().setNavigationBarColor(BACKGROUND);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -172,19 +194,22 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private LinearLayout buildControlDeck() {
         LinearLayout deck = card();
         deck.addView(sectionTitle("4 · Controls"));
-        deck.addView(sectionBody("Switch freely between touchpad, Samsung Keyboard and a complete PC keyboard."));
+        deck.addView(sectionBody("Switch between touchpad, Samsung Keyboard, PC keys and presentation controls."));
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        touchpadTab = compactButton("Touchpad");
-        phoneKeyboardTab = compactButton("Phone keys");
-        pcKeyboardTab = compactButton("PC keyboard");
+        touchpadTab = compactButton("Pad");
+        phoneKeyboardTab = compactButton("Phone");
+        pcKeyboardTab = compactButton("PC keys");
+        presenterTab = compactButton("Present");
         touchpadTab.setOnClickListener(view -> showMode(0));
         phoneKeyboardTab.setOnClickListener(view -> showMode(1));
         pcKeyboardTab.setOnClickListener(view -> showMode(2));
+        presenterTab.setOnClickListener(view -> showMode(3));
         tabs.addView(touchpadTab, weightedCompactParams());
         tabs.addView(phoneKeyboardTab, weightedCompactParams());
         tabs.addView(pcKeyboardTab, weightedCompactParams());
+        tabs.addView(presenterTab, weightedCompactParams());
         LinearLayout.LayoutParams tabsParams = matchWrap();
         tabsParams.setMargins(0, dp(10), 0, dp(12));
         deck.addView(tabs, tabsParams);
@@ -193,17 +218,25 @@ public final class MainActivity extends Activity implements HidDeviceController.
         touchpadPanel = buildTouchpadPanel();
         phoneKeyboardPanel = buildPhoneKeyboardPanel();
         pcKeyboardPanel = buildPcKeyboardPanel();
+        presenterPanel = buildPresenterPanel();
         controlHost.addView(touchpadPanel, frameWrapParams());
         controlHost.addView(phoneKeyboardPanel, frameWrapParams());
         controlHost.addView(pcKeyboardPanel, frameWrapParams());
+        controlHost.addView(presenterPanel, frameWrapParams());
         deck.addView(controlHost, matchWrap());
-        showMode(0);
+        showMode(selectedMode);
         return deck;
     }
 
     private LinearLayout buildTouchpadPanel() {
         LinearLayout panel = column();
         touchpadView = new TouchpadView(this);
+        float[] sensitivityValues = {0.85f, 1.35f, 1.9f};
+        String[] sensitivityLabels = {"slow", "normal", "fast"};
+        touchpadView.setSensitivity(sensitivityValues[sensitivityIndex]);
+        touchpadView.setNaturalScroll(naturalScroll);
+        touchpadView.setHapticsEnabled(hapticsEnabled);
+        touchpadView.setLeftHanded(leftHanded);
         touchpadView.setListener(new TouchpadView.Listener() {
             @Override
             public void onPointerMove(int dx, int dy) {
@@ -252,23 +285,43 @@ public final class MainActivity extends Activity implements HidDeviceController.
 
         LinearLayout settings = new LinearLayout(this);
         settings.setOrientation(LinearLayout.HORIZONTAL);
-        Button speed = compactButton("Speed: normal");
+        Button speed = compactButton("Speed: " + sensitivityLabels[sensitivityIndex]);
         speed.setOnClickListener(view -> {
-            float[] values = {0.85f, 1.35f, 1.9f};
-            String[] labels = {"slow", "normal", "fast"};
-            sensitivityIndex = (sensitivityIndex + 1) % values.length;
-            touchpadView.setSensitivity(values[sensitivityIndex]);
-            speed.setText("Speed: " + labels[sensitivityIndex]);
+            sensitivityIndex = (sensitivityIndex + 1) % sensitivityValues.length;
+            touchpadView.setSensitivity(sensitivityValues[sensitivityIndex]);
+            speed.setText("Speed: " + sensitivityLabels[sensitivityIndex]);
+            preferences.edit().putInt(PREF_SENSITIVITY, sensitivityIndex).apply();
         });
-        Button scrollDirection = compactButton("Scroll: standard");
+        Button scrollDirection = compactButton(naturalScroll ? "Scroll: natural" : "Scroll: standard");
         scrollDirection.setOnClickListener(view -> {
             naturalScroll = !naturalScroll;
             touchpadView.setNaturalScroll(naturalScroll);
             scrollDirection.setText(naturalScroll ? "Scroll: natural" : "Scroll: standard");
+            preferences.edit().putBoolean(PREF_NATURAL_SCROLL, naturalScroll).apply();
         });
         settings.addView(speed, weightedCompactParams());
         settings.addView(scrollDirection, weightedCompactParams());
         panel.addView(settings, rowParams());
+
+        LinearLayout accessibility = new LinearLayout(this);
+        accessibility.setOrientation(LinearLayout.HORIZONTAL);
+        Button haptics = compactButton(hapticsEnabled ? "Haptics: on" : "Haptics: off");
+        haptics.setOnClickListener(view -> {
+            hapticsEnabled = !hapticsEnabled;
+            touchpadView.setHapticsEnabled(hapticsEnabled);
+            haptics.setText(hapticsEnabled ? "Haptics: on" : "Haptics: off");
+            preferences.edit().putBoolean(PREF_HAPTICS, hapticsEnabled).apply();
+        });
+        Button primarySide = compactButton(leftHanded ? "Primary: right" : "Primary: left");
+        primarySide.setOnClickListener(view -> {
+            leftHanded = !leftHanded;
+            touchpadView.setLeftHanded(leftHanded);
+            primarySide.setText(leftHanded ? "Primary: right" : "Primary: left");
+            preferences.edit().putBoolean(PREF_LEFT_HANDED, leftHanded).apply();
+        });
+        accessibility.addView(haptics, weightedCompactParams());
+        accessibility.addView(primarySide, weightedCompactParams());
+        panel.addView(accessibility, rowParams());
         return panel;
     }
 
@@ -417,6 +470,55 @@ public final class MainActivity extends Activity implements HidDeviceController.
         return panel;
     }
 
+    private LinearLayout buildPresenterPanel() {
+        LinearLayout panel = column();
+        panel.addView(sectionBody(
+                "Large presentation controls for PowerPoint, Google Slides and other apps that accept standard keyboard shortcuts."
+        ));
+
+        LinearLayout navigation = new LinearLayout(this);
+        navigation.setOrientation(LinearLayout.HORIZONTAL);
+        navigation.addView(
+                presentationButton("← Previous", 0, HidKeyMap.KEY_LEFT),
+                weightedButtonParams()
+        );
+        navigation.addView(
+                presentationButton("Next →", 0, HidKeyMap.KEY_RIGHT),
+                weightedButtonParams()
+        );
+        panel.addView(navigation, rowParams());
+
+        LinearLayout startControls = new LinearLayout(this);
+        startControls.setOrientation(LinearLayout.HORIZONTAL);
+        startControls.addView(
+                presentationButton("Start · F5", 0, HidKeyMap.KEY_F1 + 4),
+                weightedButtonParams()
+        );
+        startControls.addView(
+                presentationButton("From current", HidKeyMap.MOD_SHIFT, HidKeyMap.KEY_F1 + 4),
+                weightedButtonParams()
+        );
+        panel.addView(startControls, rowParams());
+
+        LinearLayout screenControls = new LinearLayout(this);
+        screenControls.setOrientation(LinearLayout.HORIZONTAL);
+        screenControls.addView(
+                presentationButton("Black screen · B", 0, HidKeyMap.letterUsage('b')),
+                weightedButtonParams()
+        );
+        screenControls.addView(
+                presentationButton("White screen · W", 0, HidKeyMap.letterUsage('w')),
+                weightedButtonParams()
+        );
+        panel.addView(screenControls, rowParams());
+
+        Button endPresentation = presentationButton("End presentation · Esc", 0, HidKeyMap.KEY_ESCAPE);
+        panel.addView(endPresentation, buttonParams());
+        panel.addView(sectionBody("Media and volume"));
+        panel.addView(buildMediaStrip());
+        return panel;
+    }
+
     private HorizontalScrollView buildShortcutStrip() {
         HorizontalScrollView scroll = horizontalStrip();
         LinearLayout row = horizontalRow();
@@ -475,6 +577,13 @@ public final class MainActivity extends Activity implements HidDeviceController.
         return button;
     }
 
+    private Button presentationButton(String label, int modifiers, int usage) {
+        Button button = secondaryButton(label);
+        button.setOnClickListener(view -> controller.keyTap(modifiers, usage));
+        connectionRequiredViews.add(button);
+        return button;
+    }
+
     private Button shortcutButton(String label, int modifiers, int usage) {
         Button button = compactButton(label);
         button.setOnClickListener(view -> controller.keyTap(modifiers, usage));
@@ -519,16 +628,19 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     private void showMode(int mode) {
-        selectedMode = mode;
+        selectedMode = Math.max(0, Math.min(3, mode));
         if (touchpadPanel == null) {
             return;
         }
-        touchpadPanel.setVisibility(mode == 0 ? View.VISIBLE : View.GONE);
-        phoneKeyboardPanel.setVisibility(mode == 1 ? View.VISIBLE : View.GONE);
-        pcKeyboardPanel.setVisibility(mode == 2 ? View.VISIBLE : View.GONE);
-        styleTab(touchpadTab, mode == 0);
-        styleTab(phoneKeyboardTab, mode == 1);
-        styleTab(pcKeyboardTab, mode == 2);
+        touchpadPanel.setVisibility(selectedMode == 0 ? View.VISIBLE : View.GONE);
+        phoneKeyboardPanel.setVisibility(selectedMode == 1 ? View.VISIBLE : View.GONE);
+        pcKeyboardPanel.setVisibility(selectedMode == 2 ? View.VISIBLE : View.GONE);
+        presenterPanel.setVisibility(selectedMode == 3 ? View.VISIBLE : View.GONE);
+        styleTab(touchpadTab, selectedMode == 0);
+        styleTab(phoneKeyboardTab, selectedMode == 1);
+        styleTab(pcKeyboardTab, selectedMode == 2);
+        styleTab(presenterTab, selectedMode == 3);
+        preferences.edit().putInt(PREF_MODE, selectedMode).apply();
     }
 
     private void styleTab(Button button, boolean selected) {
@@ -609,7 +721,8 @@ public final class MainActivity extends Activity implements HidDeviceController.
         devices.clear();
         devices.addAll(controller.bondedDevices());
         List<String> names = new ArrayList<>();
-        int laptopIndex = 0;
+        int preferredIndex = -1;
+        int laptopFallbackIndex = 0;
         for (int index = 0; index < devices.size(); index++) {
             BluetoothDevice device = devices.get(index);
             String name;
@@ -622,8 +735,12 @@ public final class MainActivity extends Activity implements HidDeviceController.
                 name = "Paired device " + (index + 1);
             }
             names.add(name);
-            if (name.toUpperCase().contains("ALISLAPTOP")) {
-                laptopIndex = index;
+            if (name.toUpperCase(Locale.ROOT).contains("ALISLAPTOP")) {
+                laptopFallbackIndex = index;
+            }
+            if (preferredHostAddress != null
+                    && preferredHostAddress.equalsIgnoreCase(safeAddress(device))) {
+                preferredIndex = index;
             }
         }
         if (names.isEmpty()) {
@@ -651,8 +768,17 @@ public final class MainActivity extends Activity implements HidDeviceController.
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         deviceSpinner.setAdapter(adapter);
         if (!devices.isEmpty()) {
-            deviceSpinner.setSelection(laptopIndex);
-            controller.setPreferredHost(devices.get(laptopIndex));
+            int selection = preferredIndex >= 0 ? preferredIndex : laptopFallbackIndex;
+            deviceSpinner.setSelection(selection);
+            controller.setPreferredHost(devices.get(selection));
+        }
+    }
+
+    private String safeAddress(BluetoothDevice device) {
+        try {
+            return device.getAddress();
+        } catch (SecurityException exception) {
+            return "";
         }
     }
 
@@ -666,10 +792,14 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private void connectSelectedDevice() {
         int position = deviceSpinner.getSelectedItemPosition();
         if (position < 0 || position >= devices.size()) {
-            onStatusChanged("No paired laptop is available. Pair ALISLAPTOP in Samsung Bluetooth settings first.");
+            onStatusChanged("No paired computer is available. Pair one in Samsung Bluetooth settings first.");
             return;
         }
-        controller.connect(devices.get(position));
+        BluetoothDevice selectedDevice = devices.get(position);
+        preferredHostAddress = safeAddress(selectedDevice);
+        preferences.edit().putString(PREF_HOST_ADDRESS, preferredHostAddress).apply();
+        controller.setPreferredHost(selectedDevice);
+        controller.connect(selectedDevice);
     }
 
     private void makeDiscoverable() {

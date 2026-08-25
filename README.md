@@ -11,24 +11,51 @@ Pure Bluetooth HID has been validated on a Samsung Galaxy S24 Ultra running Andr
 - Double-tap and drag, vertical scrolling and horizontal scrolling
 - Dedicated left, right, middle, back and forward buttons
 - Adjustable pointer speed and standard/natural scrolling
+- Remembered pointer, scrolling, haptic, primary-button and last-control settings
+- Left- or right-handed touchpad primary-click mode
 - Samsung Keyboard bridge that emits ordinary HID key presses without mirroring the Windows document
 - Current-word composition and autocorrect handling without whole-document delete-and-retype behaviour
 - Physical-keyboard Enter semantics: newline in editors and submission in single-line fields
 - Full PC keyboard with Escape, F1–F12, navigation, arrows and sticky modifiers
 - Copy, paste, cut, undo, redo, select-all, app switching, close and search shortcuts
 - Volume, playback and brightness consumer controls
+- Presentation remote with previous/next, start, blank-screen and exit controls
 - Portrait and landscape layouts with keep-screen-awake behavior
+- Multiple paired-computer selection with remembered preferred host
 - Automatic HID registration/reconnection and a compact control view while connected
+- Quick Settings tile for opening PhonePad controls
 
 The Android HID Device API automatically unregisters an app that is not foreground. Keep PhonePad visible during this capability test.
 
 ## Remaining roadmap
 
 - Foreground-service reliability while the screen locks
-- Presentation mode, left-handed mode and customizable layouts
-- Settings persistence and a Quick Settings tile
 - Optional explicit Wi-Fi/USB companion fallback if Samsung's native HID profile is unreliable
+
+## Install and pair
+
+1. Install the latest APK on an Android phone that exposes Android's Bluetooth HID Device profile.
+2. Grant Nearby Devices access and keep PhonePad open.
+3. Register PhonePad, make the phone discoverable, and pair it from the computer while the HID service is active.
+4. Select any paired computer in PhonePad and connect. The last selected host is remembered.
+5. Optionally add **PhonePad controls** from Android's Quick Settings tile editor.
+
+Windows should recognize PhonePad as a standard Bluetooth keyboard and five-button mouse; no Windows companion application is required.
+
+## Build from source
+
+Requirements: JDK 17 or newer, Android SDK Platform 36, and Android Build Tools 35 or newer.
+
+```powershell
+.\gradlew.bat assembleDebug
+```
+
+The debug APK is produced under `app/build/outputs/apk/debug/`.
 
 ## Privacy
 
 PhonePad is offline-first and the Android app intentionally has no internet permission.
+
+## License
+
+PhonePad is released under the MIT License. See [LICENSE](LICENSE).

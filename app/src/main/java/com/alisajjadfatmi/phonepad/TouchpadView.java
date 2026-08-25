@@ -52,6 +52,8 @@ final class TouchpadView extends View {
     private boolean dragHeld;
     private float sensitivity = 1.35f;
     private boolean naturalScroll;
+    private boolean hapticsEnabled = true;
+    private boolean leftHanded;
 
     TouchpadView(Context context) {
         this(context, null);
@@ -81,6 +83,14 @@ final class TouchpadView extends View {
 
     void setNaturalScroll(boolean naturalScroll) {
         this.naturalScroll = naturalScroll;
+    }
+
+    void setHapticsEnabled(boolean hapticsEnabled) {
+        this.hapticsEnabled = hapticsEnabled;
+    }
+
+    void setLeftHanded(boolean leftHanded) {
+        this.leftHanded = leftHanded;
     }
 
     @Override
@@ -123,7 +133,7 @@ final class TouchpadView extends View {
                 return true;
             case MotionEvent.ACTION_CANCEL:
                 if (dragHeld) {
-                    listener.onButtonUp(HidDeviceController.MOUSE_LEFT);
+                    listener.onButtonUp(primaryButton());
                 }
                 dragHeld = false;
                 getParent().requestDisallowInterceptTouchEvent(false);
@@ -146,8 +156,10 @@ final class TouchpadView extends View {
         float tapDistance = distance(downX, downY, lastTapX, lastTapY);
         dragHeld = sinceLastTap <= DOUBLE_TAP_MS && tapDistance <= dp(48);
         if (dragHeld) {
-            listener.onButtonDown(HidDeviceController.MOUSE_LEFT);
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            listener.onButtonDown(primaryButton());
+            if (hapticsEnabled) {
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            }
         }
     }
 
@@ -196,7 +208,7 @@ final class TouchpadView extends View {
     private void finishGesture(MotionEvent event) {
         long duration = SystemClock.uptimeMillis() - downTime;
         if (dragHeld) {
-            listener.onButtonUp(HidDeviceController.MOUSE_LEFT);
+            listener.onButtonUp(primaryButton());
             dragHeld = false;
             lastTapTime = 0;
             return;
@@ -206,15 +218,15 @@ final class TouchpadView extends View {
             hapticClick();
             lastTapTime = 0;
         } else if (!moved && maximumPointers == 2) {
-            listener.onButtonClick(HidDeviceController.MOUSE_RIGHT);
+            listener.onButtonClick(secondaryButton());
             hapticClick();
             lastTapTime = 0;
         } else if (!moved && duration >= LONG_PRESS_MS) {
-            listener.onButtonClick(HidDeviceController.MOUSE_RIGHT);
+            listener.onButtonClick(secondaryButton());
             hapticClick();
             lastTapTime = 0;
         } else if (!moved) {
-            listener.onButtonClick(HidDeviceController.MOUSE_LEFT);
+            listener.onButtonClick(primaryButton());
             hapticClick();
             lastTapTime = SystemClock.uptimeMillis();
             lastTapX = event.getX();
@@ -244,7 +256,17 @@ final class TouchpadView extends View {
     }
 
     private void hapticClick() {
-        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+        if (hapticsEnabled) {
+            performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+        }
+    }
+
+    private int primaryButton() {
+        return leftHanded ? HidDeviceController.MOUSE_RIGHT : HidDeviceController.MOUSE_LEFT;
+    }
+
+    private int secondaryButton() {
+        return leftHanded ? HidDeviceController.MOUSE_LEFT : HidDeviceController.MOUSE_RIGHT;
     }
 
     private static float distance(float x1, float y1, float x2, float y2) {
