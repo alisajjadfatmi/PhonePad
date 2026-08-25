@@ -235,13 +235,35 @@ public final class MainActivity extends Activity implements HidDeviceController.
         }
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this,
-                android.R.layout.simple_spinner_dropdown_item,
+                android.R.layout.simple_spinner_item,
                 names
-        );
+        ) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                styleDeviceChoice(view);
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                styleDeviceChoice(view);
+                return view;
+            }
+        };
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         deviceSpinner.setAdapter(adapter);
         if (!devices.isEmpty()) {
             deviceSpinner.setSelection(laptopIndex);
         }
+    }
+
+    private void styleDeviceChoice(TextView view) {
+        view.setTextColor(Color.rgb(12, 20, 36));
+        view.setTextSize(16);
+        view.setBackgroundColor(Color.WHITE);
+        view.setPadding(dp(16), dp(12), dp(16), dp(12));
     }
 
     private void connectSelectedDevice() {
@@ -326,6 +348,15 @@ public final class MainActivity extends Activity implements HidDeviceController.
         capabilityText.setText(proxy
                 ? "HID profile: available ✓"
                 : "HID profile: waiting for Android");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (controller != null && hasBluetoothPermission()) {
+            refreshBondedDevices();
+            refreshUi();
+        }
     }
 
     @Override
