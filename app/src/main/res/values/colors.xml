@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="phonepad_background">#0B1020</color>
+    <color name="phonepad_surface">#151C31</color>
+    <color name="phonepad_primary">#70A5FF</color>
+    <color name="phonepad_on_primary">#061126</color>
+    <color name="phonepad_text">#F5F7FF</color>
+    <color name="phonepad_muted">#B6C0D8</color>
+</resources>
+
