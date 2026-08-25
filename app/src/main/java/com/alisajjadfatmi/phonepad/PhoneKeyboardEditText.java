@@ -13,8 +13,6 @@ final class PhoneKeyboardEditText extends EditText {
         void onCommittedText(CharSequence text);
 
         void onBackspace(int count);
-
-        void onEnter();
     }
 
     private Listener listener;
@@ -66,15 +64,17 @@ final class PhoneKeyboardEditText extends EditText {
             return;
         }
 
+        String printableText = printableTextOnly(currentText);
+
         if (listener == null) {
-            forwardedText = currentText;
+            forwardedText = printableText;
             return;
         }
 
         int commonPrefix = 0;
-        int maximumPrefix = Math.min(forwardedText.length(), currentText.length());
+        int maximumPrefix = Math.min(forwardedText.length(), printableText.length());
         while (commonPrefix < maximumPrefix
-                && forwardedText.charAt(commonPrefix) == currentText.charAt(commonPrefix)) {
+                && forwardedText.charAt(commonPrefix) == printableText.charAt(commonPrefix)) {
             commonPrefix++;
         }
 
@@ -83,10 +83,21 @@ final class PhoneKeyboardEditText extends EditText {
             listener.onBackspace(removedCharacters);
         }
 
-        if (commonPrefix < currentText.length()) {
-            listener.onCommittedText(currentText.substring(commonPrefix));
+        if (commonPrefix < printableText.length()) {
+            listener.onCommittedText(printableText.substring(commonPrefix));
         }
-        forwardedText = currentText;
+        forwardedText = printableText;
+    }
+
+    private static String printableTextOnly(String text) {
+        StringBuilder result = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (HidKeyMap.isPrintableTextCharacter(character)) {
+                result.append(character);
+            }
+        }
+        return result.toString();
     }
 
     @Override

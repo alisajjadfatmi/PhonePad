@@ -42,6 +42,12 @@ final class HidKeyMap {
         return lower >= 'a' && lower <= 'z' ? 0x04 + lower - 'a' : 0;
     }
 
+    static boolean isPrintableTextCharacter(char character) {
+        return character >= 0x20
+                && character <= 0x7E
+                && forCharacter(character) != null;
+    }
+
     static KeyStroke forCharacter(char character) {
         if (character >= 'a' && character <= 'z') {
             return new KeyStroke(0, 0x04 + character - 'a');

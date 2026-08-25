@@ -302,11 +302,6 @@ public final class MainActivity extends Activity implements HidDeviceController.
             public void onBackspace(int count) {
                 controller.backspace(count);
             }
-
-            @Override
-            public void onEnter() {
-                controller.keyTap(0, HidKeyMap.KEY_ENTER);
-            }
         });
         connectionRequiredViews.add(phoneKeyboardInput);
         LinearLayout.LayoutParams inputParams = matchWrap();
@@ -327,6 +322,11 @@ public final class MainActivity extends Activity implements HidDeviceController.
         inputActions.addView(openKeyboard, weightedButtonParams());
         inputActions.addView(clear, weightedButtonParams());
         panel.addView(inputActions, rowParams());
+
+        Button sendEnter = secondaryButton("Send Enter ↵");
+        sendEnter.setOnClickListener(view -> controller.keyTap(0, HidKeyMap.KEY_ENTER));
+        connectionRequiredViews.add(sendEnter);
+        panel.addView(sendEnter, buttonParams());
 
         panel.addView(sectionBody("Windows shortcuts"));
         panel.addView(buildShortcutStrip());
