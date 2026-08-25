@@ -23,22 +23,25 @@ Pure Bluetooth HID has been validated on a Samsung Galaxy S24 Ultra running Andr
 - Portrait and landscape layouts with keep-screen-awake behavior
 - Multiple paired-computer selection with remembered preferred host
 - Automatic HID registration/reconnection and a compact control view while connected
+- Persistent connected-device service that keeps Bluetooth HID active when PhonePad is in the background
+- Ongoing connection notification that reopens the existing live control session
 - Quick Settings tile for opening PhonePad controls
 
-The Android HID Device API automatically unregisters an app that is not foreground. Keep PhonePad visible during this capability test.
+Android automatically unregisters a Bluetooth HID Device app that is not foreground. PhonePad avoids that disconnect by keeping HID ownership in a low-priority foreground connected-device service rather than in the visible screen.
 
 ## Remaining roadmap
 
-- Foreground-service reliability while the screen locks
 - Optional explicit Wi-Fi/USB companion fallback if Samsung's native HID profile is unreliable
 
 ## Install and pair
 
 1. Install the latest APK on an Android phone that exposes Android's Bluetooth HID Device profile.
-2. Grant Nearby Devices access and keep PhonePad open.
+2. Grant Nearby Devices access. Allow notifications so Android can show the persistent connection status.
 3. Register PhonePad, make the phone discoverable, and pair it from the computer while the HID service is active.
 4. Select any paired computer in PhonePad and connect. The last selected host is remembered.
 5. Optionally add **PhonePad controls** from Android's Quick Settings tile editor.
+
+After connecting, you can switch apps or return to the Home screen. The **PhonePad is active** notification keeps the standard Bluetooth keyboard and mouse registered; tap it to return to the controls.
 
 Windows should recognize PhonePad as a standard Bluetooth keyboard and five-button mouse; no Windows companion application is required.
 

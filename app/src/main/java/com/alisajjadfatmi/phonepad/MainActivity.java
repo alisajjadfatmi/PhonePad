@@ -4,15 +4,17 @@ import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
+import android.os.IBinder;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -35,20 +37,25 @@ import java.util.Locale;
 public final class MainActivity extends Activity implements HidDeviceController.Listener {
     private static final int REQUEST_BLUETOOTH = 1001;
     private static final int REQUEST_DISCOVERABLE = 1002;
+    private static final int REQUEST_NOTIFICATIONS = 1003;
     private static final int BACKGROUND = Color.rgb(11, 16, 32);
     private static final int SURFACE = Color.rgb(21, 28, 49);
     private static final int PRIMARY = Color.rgb(112, 165, 255);
     private static final int TEXT = Color.rgb(245, 247, 255);
     private static final int MUTED = Color.rgb(182, 192, 216);
-    private static final String PREFERENCES = "phonepad_preferences";
+    private static final String PREFERENCES = PhonePadHidService.PREFERENCES;
     private static final String PREF_MODE = "control_mode";
     private static final String PREF_SENSITIVITY = "pointer_sensitivity";
     private static final String PREF_NATURAL_SCROLL = "natural_scroll";
     private static final String PREF_HAPTICS = "touchpad_haptics";
     private static final String PREF_LEFT_HANDED = "left_handed_primary";
-    private static final String PREF_HOST_ADDRESS = "preferred_host_address";
+    private static final String PREF_HOST_ADDRESS = PhonePadHidService.PREF_HOST_ADDRESS;
+    private static final String PREF_NOTIFICATION_ASKED = "notification_permission_asked";
 
     private HidDeviceController controller;
+    private PhonePadHidService hidService;
+    private boolean serviceBound;
+    private boolean bindingRequested;
     private TextView statusText;
     private TextView capabilityText;
     private Button permissionButton;
@@ -82,6 +89,44 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private String preferredHostAddress;
     private SharedPreferences preferences;
     private final List<BluetoothDevice> devices = new ArrayList<>();
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder binder) {
+            bindingRequested = false;
+            if (!(binder instanceof PhonePadHidService.LocalBinder)) {
+                unbindService(serviceConnection);
+                onStatusChanged("Android returned an unexpected PhonePad service connection.");
+                return;
+            }
+            hidService = ((PhonePadHidService.LocalBinder) binder).getService();
+            serviceBound = true;
+            controller = hidService.controller();
+            hidService.setUiListener(MainActivity.this);
+            if (controller == null) {
+                onStatusChanged(hidService.latestStatus());
+                refreshUi();
+                return;
+            }
+            if (!controller.hasBluetoothAdapter()) {
+                onStatusChanged("No Bluetooth adapter was found on this phone.");
+            } else if (!controller.isBluetoothEnabled()) {
+                onStatusChanged("Bluetooth is off. Turn it on, then return to PhonePad.");
+            } else {
+                refreshBondedDevices();
+            }
+            refreshUi();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            bindingRequested = false;
+            serviceBound = false;
+            hidService = null;
+            controller = null;
+            onStatusChanged("PhonePad's background connection service stopped.");
+            refreshUi();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -97,11 +142,8 @@ public final class MainActivity extends Activity implements HidDeviceController.
         getWindow().setNavigationBarColor(BACKGROUND);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(buildContent());
-        controller = new HidDeviceController(this, this);
         refreshUi();
-        if (hasBluetoothPermission()) {
-            initializeBluetooth();
-        } else {
+        if (!hasBluetoothPermission()) {
             onStatusChanged("Allow Nearby Devices so PhonePad can register its keyboard and mouse service.");
         }
     }
@@ -153,7 +195,11 @@ public final class MainActivity extends Activity implements HidDeviceController.
         registerCard.addView(sectionTitle("2 · Register keyboard + mouse"));
         registerCard.addView(sectionBody("Android should advertise PhonePad as one composite input device."));
         registerButton = actionButton("Register PhonePad");
-        registerButton.setOnClickListener(view -> controller.registerApp());
+        registerButton.setOnClickListener(view -> {
+            if (controller != null) {
+                controller.registerApp();
+            }
+        });
         registerCard.addView(registerButton, buttonParams());
         content.addView(registerCard, cardParams());
 
@@ -668,17 +714,12 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     private void initializeBluetooth() {
-        if (!controller.hasBluetoothAdapter()) {
-            onStatusChanged("No Bluetooth adapter was found on this phone.");
-            return;
+        Intent serviceIntent = new Intent(this, PhonePadHidService.class);
+        startForegroundService(serviceIntent);
+        if (!serviceBound && !bindingRequested) {
+            bindingRequested = bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
         }
-        if (!controller.isBluetoothEnabled()) {
-            onStatusChanged("Bluetooth is off. Turn it on, then return to PhonePad.");
-            startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
-            return;
-        }
-        refreshBondedDevices();
-        controller.openProfile();
+        requestNotificationPermissionIfNeeded();
     }
 
     private boolean hasBluetoothPermission() {
@@ -698,9 +739,30 @@ public final class MainActivity extends Activity implements HidDeviceController.
         }
     }
 
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED
+                || preferences.getBoolean(PREF_NOTIFICATION_ASKED, false)) {
+            return;
+        }
+        preferences.edit().putBoolean(PREF_NOTIFICATION_ASKED, true).apply();
+        requestPermissions(
+                new String[] {Manifest.permission.POST_NOTIFICATIONS},
+                REQUEST_NOTIFICATIONS
+        );
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_NOTIFICATIONS) {
+            if (grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                onStatusChanged("PhonePad's persistent connection notification is enabled.");
+            }
+            return;
+        }
         if (requestCode != REQUEST_BLUETOOTH) {
             return;
         }
@@ -718,6 +780,9 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     private void refreshBondedDevices() {
+        if (controller == null) {
+            return;
+        }
         devices.clear();
         devices.addAll(controller.bondedDevices());
         List<String> names = new ArrayList<>();
@@ -790,6 +855,10 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     private void connectSelectedDevice() {
+        if (controller == null) {
+            onStatusChanged("PhonePad's Bluetooth service is still starting.");
+            return;
+        }
         int position = deviceSpinner.getSelectedItemPosition();
         if (position < 0 || position >= devices.size()) {
             onStatusChanged("No paired computer is available. Pair one in Samsung Bluetooth settings first.");
@@ -803,6 +872,10 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     private void makeDiscoverable() {
+        if (controller == null) {
+            onStatusChanged("PhonePad's Bluetooth service is still starting.");
+            return;
+        }
         if (!controller.isRegistered()) {
             onStatusChanged("Register PhonePad before starting fresh pairing.");
             return;
@@ -828,6 +901,10 @@ public final class MainActivity extends Activity implements HidDeviceController.
         if (requestCode != REQUEST_DISCOVERABLE) {
             return;
         }
+        if (controller == null) {
+            onStatusChanged("PhonePad's Bluetooth service stopped before pairing completed.");
+            return;
+        }
         if (resultCode > 0) {
             if (!controller.isRegistered()) {
                 controller.registerApp();
@@ -851,10 +928,25 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     private void refreshUi() {
+        boolean permission = hasBluetoothPermission();
         if (controller == null) {
+            permissionButton.setEnabled(!permission);
+            permissionButton.setText(permission ? "Bluetooth access granted" : "Allow Bluetooth access");
+            registerButton.setEnabled(false);
+            discoverableButton.setEnabled(false);
+            refreshButton.setEnabled(false);
+            connectButton.setEnabled(false);
+            for (View view : connectionRequiredViews) {
+                view.setEnabled(false);
+            }
+            if (controlHost != null) {
+                controlHost.setAlpha(0.48f);
+            }
+            capabilityText.setText(permission
+                    ? "HID profile: starting background service"
+                    : "HID profile: waiting for permission");
             return;
         }
-        boolean permission = hasBluetoothPermission();
         boolean proxy = controller.isProxyReady();
         boolean registered = controller.isRegistered();
         boolean connected = controller.isConnected();
@@ -887,6 +979,14 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        if (hasBluetoothPermission()) {
+            initializeBluetooth();
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         if (controller != null && hasBluetoothPermission()) {
@@ -896,11 +996,18 @@ public final class MainActivity extends Activity implements HidDeviceController.
     }
 
     @Override
-    protected void onDestroy() {
-        if (controller != null) {
-            controller.close();
+    protected void onStop() {
+        if (serviceBound && hidService != null) {
+            hidService.setUiListener(null);
         }
-        super.onDestroy();
+        if (serviceBound || bindingRequested) {
+            unbindService(serviceConnection);
+        }
+        bindingRequested = false;
+        serviceBound = false;
+        hidService = null;
+        controller = null;
+        super.onStop();
     }
 
     private LinearLayout column() {
