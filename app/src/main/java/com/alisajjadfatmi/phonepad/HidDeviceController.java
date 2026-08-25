@@ -38,8 +38,10 @@ final class HidDeviceController implements AutoCloseable {
 
     private BluetoothHidDevice hidDevice;
     private BluetoothDevice activeHost;
+    private BluetoothDevice preferredHost;
     private boolean proxyReady;
     private boolean registered;
+    private boolean registrationPending;
     private int connectionState = BluetoothProfile.STATE_DISCONNECTED;
     private int mouseButtons;
 
@@ -64,6 +66,10 @@ final class HidDeviceController implements AutoCloseable {
 
     boolean isRegistered() {
         return registered;
+    }
+
+    boolean isRegistrationPending() {
+        return registrationPending;
     }
 
     boolean isConnected() {
@@ -112,6 +118,9 @@ final class HidDeviceController implements AutoCloseable {
             notifyStatus("The HID profile is not ready yet.");
             return;
         }
+        if (registered || registrationPending) {
+            return;
+        }
         BluetoothHidDeviceAppSdpSettings settings = new BluetoothHidDeviceAppSdpSettings(
                 "PhonePad",
                 "Phone keyboard and five-button mouse",
@@ -126,6 +135,7 @@ final class HidDeviceController implements AutoCloseable {
                 context.getMainExecutor(),
                 callback
         );
+        registrationPending = requestSent;
         notifyStatus(requestSent
                 ? "HID registration requested; waiting for Samsung's Bluetooth service…"
                 : "Samsung's Bluetooth service rejected the registration request.");
@@ -141,6 +151,7 @@ final class HidDeviceController implements AutoCloseable {
             notifyStatus("Choose the laptop first.");
             return;
         }
+        preferredHost = device;
         activeHost = device;
         connectionState = BluetoothProfile.STATE_CONNECTING;
         boolean requestSent = hidDevice.connect(device);
@@ -148,6 +159,12 @@ final class HidDeviceController implements AutoCloseable {
                 ? "Connecting to " + safeName(device) + "…"
                 : "Android rejected the connection request for " + safeName(device) + ".");
         notifyState();
+    }
+
+    void setPreferredHost(BluetoothDevice device) {
+        if (device != null) {
+            preferredHost = device;
+        }
     }
 
     void testPointerMove() {
@@ -346,6 +363,7 @@ final class HidDeviceController implements AutoCloseable {
             proxyReady = true;
             notifyStatus("Bluetooth HID Device profile is available on this phone.");
             notifyState();
+            registerApp();
         }
 
         @Override
@@ -356,6 +374,7 @@ final class HidDeviceController implements AutoCloseable {
             hidDevice = null;
             proxyReady = false;
             registered = false;
+            registrationPending = false;
             activeHost = null;
             connectionState = BluetoothProfile.STATE_DISCONNECTED;
             notifyStatus("Android's Bluetooth HID service disconnected.");
@@ -369,6 +388,7 @@ final class HidDeviceController implements AutoCloseable {
             Log.i(TAG, "onAppStatusChanged registered=" + isRegistered
                     + " pluggedDevice=" + (pluggedDevice == null ? "none" : safeName(pluggedDevice)));
             registered = isRegistered;
+            registrationPending = false;
             if (pluggedDevice != null) {
                 activeHost = pluggedDevice;
             }
@@ -376,6 +396,12 @@ final class HidDeviceController implements AutoCloseable {
                     ? "Success: PhonePad is registered as a Bluetooth keyboard and mouse."
                     : "PhonePad is not registered as a Bluetooth keyboard/mouse.");
             notifyState();
+            BluetoothDevice reconnectHost = pluggedDevice != null ? pluggedDevice : preferredHost;
+            if (isRegistered
+                    && reconnectHost != null
+                    && connectionState == BluetoothProfile.STATE_DISCONNECTED) {
+                connect(reconnectHost);
+            }
         }
 
         @Override
@@ -440,6 +466,7 @@ final class HidDeviceController implements AutoCloseable {
         activeHost = null;
         proxyReady = false;
         registered = false;
+        registrationPending = false;
         connectionState = BluetoothProfile.STATE_DISCONNECTED;
     }
 

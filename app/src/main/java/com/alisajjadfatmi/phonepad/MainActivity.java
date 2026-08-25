@@ -48,6 +48,9 @@ public final class MainActivity extends Activity implements HidDeviceController.
     private Button discoverableButton;
     private Button refreshButton;
     private Spinner deviceSpinner;
+    private LinearLayout permissionCard;
+    private LinearLayout registerCard;
+    private LinearLayout connectCard;
     private FrameLayout controlHost;
     private LinearLayout touchpadPanel;
     private LinearLayout phoneKeyboardPanel;
@@ -116,7 +119,7 @@ public final class MainActivity extends Activity implements HidDeviceController.
         capabilityText = label("HID profile: checking", 14, MUTED);
         content.addView(capabilityText);
 
-        LinearLayout permissionCard = card();
+        permissionCard = card();
         permissionCard.addView(sectionTitle("1 · Bluetooth access"));
         permissionCard.addView(sectionBody("Grant Nearby Devices permission and keep Bluetooth turned on."));
         permissionButton = actionButton("Allow Bluetooth access");
@@ -124,7 +127,7 @@ public final class MainActivity extends Activity implements HidDeviceController.
         permissionCard.addView(permissionButton, buttonParams());
         content.addView(permissionCard, cardParams());
 
-        LinearLayout registerCard = card();
+        registerCard = card();
         registerCard.addView(sectionTitle("2 · Register keyboard + mouse"));
         registerCard.addView(sectionBody("Android should advertise PhonePad as one composite input device."));
         registerButton = actionButton("Register PhonePad");
@@ -132,7 +135,7 @@ public final class MainActivity extends Activity implements HidDeviceController.
         registerCard.addView(registerButton, buttonParams());
         content.addView(registerCard, cardParams());
 
-        LinearLayout connectCard = card();
+        connectCard = card();
         connectCard.addView(sectionTitle("3 · Connect to the paired laptop"));
         connectCard.addView(sectionBody(
                 "For the first HID connection, pair while PhonePad is registered so Windows discovers the keyboard and mouse service."
@@ -320,7 +323,7 @@ public final class MainActivity extends Activity implements HidDeviceController.
         });
         connectionRequiredViews.add(openKeyboard);
         Button clear = secondaryButton("Clear phone field");
-        clear.setOnClickListener(view -> phoneKeyboardInput.setText(""));
+        clear.setOnClickListener(view -> phoneKeyboardInput.clearLocalText());
         inputActions.addView(openKeyboard, weightedButtonParams());
         inputActions.addView(clear, weightedButtonParams());
         panel.addView(inputActions, rowParams());
@@ -634,6 +637,7 @@ public final class MainActivity extends Activity implements HidDeviceController.
         deviceSpinner.setAdapter(adapter);
         if (!devices.isEmpty()) {
             deviceSpinner.setSelection(laptopIndex);
+            controller.setPreferredHost(devices.get(laptopIndex));
         }
     }
 
@@ -712,14 +716,20 @@ public final class MainActivity extends Activity implements HidDeviceController.
 
         permissionButton.setEnabled(!permission);
         permissionButton.setText(permission ? "Bluetooth access granted" : "Allow Bluetooth access");
-        registerButton.setEnabled(permission && proxy && !registered);
-        registerButton.setText(registered ? "Keyboard + mouse registered" : "Register PhonePad");
+        boolean registrationPending = controller.isRegistrationPending();
+        registerButton.setEnabled(permission && proxy && !registered && !registrationPending);
+        registerButton.setText(registered
+                ? "Keyboard + mouse registered"
+                : registrationPending ? "Registering keyboard + mouse…" : "Register PhonePad");
         discoverableButton.setEnabled(permission && registered);
         refreshButton.setEnabled(permission);
         connectButton.setEnabled(registered && !devices.isEmpty() && !connected);
         connectButton.setText(connected
                 ? "Connected to " + controller.connectedHostName()
                 : "Connect as input device");
+        permissionCard.setVisibility(connected ? View.GONE : View.VISIBLE);
+        registerCard.setVisibility(connected ? View.GONE : View.VISIBLE);
+        connectCard.setVisibility(connected ? View.GONE : View.VISIBLE);
         for (View view : connectionRequiredViews) {
             view.setEnabled(connected);
         }

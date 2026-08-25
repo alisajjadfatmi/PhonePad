@@ -12,17 +12,18 @@ Pure Bluetooth HID has been validated on a Samsung Galaxy S24 Ultra running Andr
 - Dedicated left, right, middle, back and forward buttons
 - Adjustable pointer speed and standard/natural scrolling
 - Samsung Keyboard mode for English and Hinglish text
+- Samsung composing-text and autocorrect handling, including mirrored backspace corrections
 - Full PC keyboard with Escape, F1–F12, navigation, arrows and sticky modifiers
 - Copy, paste, cut, undo, redo, select-all, app switching, close and search shortcuts
 - Volume, playback and brightness consumer controls
 - Portrait and landscape layouts with keep-screen-awake behavior
+- Automatic HID registration/reconnection and a compact control view while connected
 
 The Android HID Device API automatically unregisters an app that is not foreground. Keep PhonePad visible during this capability test.
 
 ## Remaining roadmap
 
 - Foreground-service reliability while the screen locks
-- Automatic reconnection and a compact connected layout
 - Presentation mode, left-handed mode and customizable layouts
 - Settings persistence and a Quick Settings tile
 - Optional explicit Wi-Fi/USB companion fallback if Samsung's native HID profile is unreliable

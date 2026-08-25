@@ -1,11 +1,11 @@
 package com.alisajjadfatmi.phonepad;
 
 import android.content.Context;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.AttributeSet;
-import android.view.KeyEvent;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
-import android.view.inputmethod.InputConnectionWrapper;
 import android.widget.EditText;
 
 final class PhoneKeyboardEditText extends EditText {
@@ -18,17 +18,75 @@ final class PhoneKeyboardEditText extends EditText {
     }
 
     private Listener listener;
+    private String forwardedText = "";
+    private boolean suppressForwarding;
 
     PhoneKeyboardEditText(Context context) {
         super(context);
+        initializeTextForwarding();
     }
 
     PhoneKeyboardEditText(Context context, AttributeSet attrs) {
         super(context, attrs);
+        initializeTextForwarding();
     }
 
     void setPhoneKeyboardListener(Listener listener) {
         this.listener = listener;
+    }
+
+    void clearLocalText() {
+        suppressForwarding = true;
+        setText("");
+        forwardedText = "";
+        suppressForwarding = false;
+    }
+
+    private void initializeTextForwarding() {
+        addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+                // Nothing to capture before the edit.
+            }
+
+            @Override
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+                // The final editable value is handled in afterTextChanged.
+            }
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                forwardTextDifference(editable == null ? "" : editable.toString());
+            }
+        });
+    }
+
+    private void forwardTextDifference(String currentText) {
+        if (suppressForwarding) {
+            return;
+        }
+
+        if (listener == null) {
+            forwardedText = currentText;
+            return;
+        }
+
+        int commonPrefix = 0;
+        int maximumPrefix = Math.min(forwardedText.length(), currentText.length());
+        while (commonPrefix < maximumPrefix
+                && forwardedText.charAt(commonPrefix) == currentText.charAt(commonPrefix)) {
+            commonPrefix++;
+        }
+
+        int removedCharacters = forwardedText.length() - commonPrefix;
+        if (removedCharacters > 0) {
+            listener.onBackspace(removedCharacters);
+        }
+
+        if (commonPrefix < currentText.length()) {
+            listener.onCommittedText(currentText.substring(commonPrefix));
+        }
+        forwardedText = currentText;
     }
 
     @Override
@@ -38,42 +96,6 @@ final class PhoneKeyboardEditText extends EditText {
             return null;
         }
         outAttrs.imeOptions |= EditorInfo.IME_FLAG_NO_EXTRACT_UI;
-        return new InputConnectionWrapper(base, true) {
-            @Override
-            public boolean commitText(CharSequence text, int newCursorPosition) {
-                if (listener != null && text != null && text.length() > 0) {
-                    listener.onCommittedText(text);
-                }
-                return super.commitText(text, newCursorPosition);
-            }
-
-            @Override
-            public boolean deleteSurroundingText(int beforeLength, int afterLength) {
-                if (listener != null && beforeLength > 0) {
-                    listener.onBackspace(beforeLength);
-                }
-                return super.deleteSurroundingText(beforeLength, afterLength);
-            }
-
-            @Override
-            public boolean sendKeyEvent(KeyEvent event) {
-                if (event.getAction() == KeyEvent.ACTION_DOWN && listener != null) {
-                    if (event.getKeyCode() == KeyEvent.KEYCODE_DEL) {
-                        listener.onBackspace(1);
-                    } else if (event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
-                        listener.onEnter();
-                    }
-                }
-                return super.sendKeyEvent(event);
-            }
-
-            @Override
-            public boolean performEditorAction(int editorAction) {
-                if (listener != null) {
-                    listener.onEnter();
-                }
-                return true;
-            }
-        };
+        return base;
     }
 }
