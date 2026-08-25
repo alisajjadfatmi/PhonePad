@@ -41,6 +41,7 @@ final class HidDeviceController implements AutoCloseable {
     private boolean proxyReady;
     private boolean registered;
     private int connectionState = BluetoothProfile.STATE_DISCONNECTED;
+    private int mouseButtons;
 
     HidDeviceController(Context context, Listener listener) {
         this.context = context.getApplicationContext();
@@ -151,26 +152,100 @@ final class HidDeviceController implements AutoCloseable {
 
     void testPointerMove() {
         inputExecutor.execute(() -> {
-            sendMouse(0, 45, 0, 0, 0);
+            sendMouse(mouseButtons, 45, 0, 0, 0);
             sleep(120);
-            sendMouse(0, 0, 35, 0, 0);
+            sendMouse(mouseButtons, 0, 35, 0, 0);
             sleep(120);
-            sendMouse(0, -45, 0, 0, 0);
+            sendMouse(mouseButtons, -45, 0, 0, 0);
             sleep(120);
-            sendMouse(0, 0, -35, 0, 0);
+            sendMouse(mouseButtons, 0, -35, 0, 0);
         });
     }
 
     void testLeftClick() {
-        inputExecutor.execute(() -> {
-            sendMouse(MOUSE_LEFT, 0, 0, 0, 0);
-            sleep(70);
-            sendMouse(0, 0, 0, 0, 0);
-        });
+        mouseClick(MOUSE_LEFT);
     }
 
     void testTyping() {
-        inputExecutor.execute(() -> typeAscii("PhonePad"));
+        typeText("PhonePad");
+    }
+
+    void movePointer(int dx, int dy) {
+        inputExecutor.execute(() -> {
+            int remainingX = dx;
+            int remainingY = dy;
+            while (remainingX != 0 || remainingY != 0) {
+                int stepX = Math.max(-127, Math.min(127, remainingX));
+                int stepY = Math.max(-127, Math.min(127, remainingY));
+                sendMouse(mouseButtons, stepX, stepY, 0, 0);
+                remainingX -= stepX;
+                remainingY -= stepY;
+            }
+        });
+    }
+
+    void scroll(int vertical, int horizontal) {
+        inputExecutor.execute(() -> sendMouse(mouseButtons, 0, 0, vertical, horizontal));
+    }
+
+    void mouseButtonDown(int button) {
+        inputExecutor.execute(() -> {
+            mouseButtons |= button;
+            sendMouse(mouseButtons, 0, 0, 0, 0);
+        });
+    }
+
+    void mouseButtonUp(int button) {
+        inputExecutor.execute(() -> {
+            mouseButtons &= ~button;
+            sendMouse(mouseButtons, 0, 0, 0, 0);
+        });
+    }
+
+    void mouseClick(int button) {
+        inputExecutor.execute(() -> {
+            mouseButtons |= button;
+            sendMouse(mouseButtons, 0, 0, 0, 0);
+            sleep(55);
+            mouseButtons &= ~button;
+            sendMouse(mouseButtons, 0, 0, 0, 0);
+        });
+    }
+
+    void keyTap(int modifiers, int usage) {
+        inputExecutor.execute(() -> {
+            sendKeyboard(modifiers, usage);
+            sleep(45);
+            sendKeyboard(0, 0);
+        });
+    }
+
+    void typeText(CharSequence text) {
+        if (text == null || text.length() == 0) {
+            return;
+        }
+        String copy = text.toString();
+        inputExecutor.execute(() -> typeAscii(copy));
+    }
+
+    void backspace(int count) {
+        int safeCount = Math.max(1, Math.min(100, count));
+        inputExecutor.execute(() -> {
+            for (int index = 0; index < safeCount; index++) {
+                sendKeyboard(0, HidKeyMap.KEY_BACKSPACE);
+                sleep(35);
+                sendKeyboard(0, 0);
+                sleep(25);
+            }
+        });
+    }
+
+    void consumerTap(int usage) {
+        inputExecutor.execute(() -> {
+            sendConsumer(usage);
+            sleep(55);
+            sendConsumer(0);
+        });
     }
 
     @SuppressLint("MissingPermission")
@@ -192,7 +267,7 @@ final class HidDeviceController implements AutoCloseable {
 
     private void typeAscii(String text) {
         for (int index = 0; index < text.length(); index++) {
-            KeyStroke stroke = KeyStroke.forCharacter(text.charAt(index));
+            HidKeyMap.KeyStroke stroke = HidKeyMap.forCharacter(text.charAt(index));
             if (stroke == null) {
                 continue;
             }
@@ -214,6 +289,20 @@ final class HidDeviceController implements AutoCloseable {
         report[0] = (byte) modifiers;
         report[2] = (byte) usage;
         return device.sendReport(host, HidReportDescriptor.KEYBOARD_REPORT_ID, report);
+    }
+
+    @SuppressLint("MissingPermission")
+    private boolean sendConsumer(int usage) {
+        BluetoothDevice host = activeHost;
+        BluetoothHidDevice device = hidDevice;
+        if (host == null || device == null || connectionState != BluetoothProfile.STATE_CONNECTED) {
+            return false;
+        }
+        byte[] report = new byte[] {
+                (byte) (usage & 0xFF),
+                (byte) ((usage >> 8) & 0xFF)
+        };
+        return device.sendReport(host, HidReportDescriptor.CONSUMER_REPORT_ID, report);
     }
 
     @SuppressLint("MissingPermission")
@@ -318,6 +407,8 @@ final class HidDeviceController implements AutoCloseable {
                 hidDevice.replyReport(device, type, id, new byte[8]);
             } else if (id == HidReportDescriptor.MOUSE_REPORT_ID) {
                 hidDevice.replyReport(device, type, id, new byte[5]);
+            } else if (id == HidReportDescriptor.CONSUMER_REPORT_ID) {
+                hidDevice.replyReport(device, type, id, new byte[2]);
             } else {
                 hidDevice.reportError(device, BluetoothHidDevice.ERROR_RSP_INVALID_RPT_ID);
             }
@@ -336,6 +427,7 @@ final class HidDeviceController implements AutoCloseable {
     @SuppressLint("MissingPermission")
     public void close() {
         inputExecutor.shutdownNow();
+        mouseButtons = 0;
         if (hidDevice != null) {
             if (registered) {
                 hidDevice.unregisterApp();
@@ -351,28 +443,4 @@ final class HidDeviceController implements AutoCloseable {
         connectionState = BluetoothProfile.STATE_DISCONNECTED;
     }
 
-    private static final class KeyStroke {
-        private static final int LEFT_SHIFT = 0x02;
-
-        final int modifier;
-        final int usage;
-
-        private KeyStroke(int modifier, int usage) {
-            this.modifier = modifier;
-            this.usage = usage;
-        }
-
-        static KeyStroke forCharacter(char character) {
-            if (character >= 'a' && character <= 'z') {
-                return new KeyStroke(0, 0x04 + character - 'a');
-            }
-            if (character >= 'A' && character <= 'Z') {
-                return new KeyStroke(LEFT_SHIFT, 0x04 + character - 'A');
-            }
-            if (character == ' ') {
-                return new KeyStroke(0, 0x2C);
-            }
-            return null;
-        }
-    }
 }

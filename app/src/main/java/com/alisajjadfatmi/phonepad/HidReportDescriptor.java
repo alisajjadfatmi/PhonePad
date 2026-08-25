@@ -3,6 +3,7 @@ package com.alisajjadfatmi.phonepad;
 final class HidReportDescriptor {
     static final byte KEYBOARD_REPORT_ID = 1;
     static final byte MOUSE_REPORT_ID = 2;
+    static final byte CONSUMER_REPORT_ID = 3;
 
     private HidReportDescriptor() {
     }
@@ -82,7 +83,20 @@ final class HidReportDescriptor {
             (byte) 0x95, 0x01,
             (byte) 0x81, 0x06,
             (byte) 0xC0,
+            (byte) 0xC0,
+
+            // Consumer controls, report ID 3. One 16-bit usage at a time.
+            0x05, 0x0C,             // Usage Page (Consumer)
+            0x09, 0x01,             // Usage (Consumer Control)
+            (byte) 0xA1, 0x01,
+            (byte) 0x85, CONSUMER_REPORT_ID,
+            0x15, 0x00,
+            0x26, (byte) 0xFF, 0x03,
+            0x19, 0x00,
+            0x2A, (byte) 0xFF, 0x03,
+            0x75, 0x10,
+            (byte) 0x95, 0x01,
+            (byte) 0x81, 0x00,
             (byte) 0xC0
     };
 }
-
